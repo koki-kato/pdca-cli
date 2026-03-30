@@ -1,0 +1,5 @@
+#!/usr/bin/env ruby
+
+require_relative "../lib/pdca_cli"
+
+PdcaCli::CLI.start(ARGV)

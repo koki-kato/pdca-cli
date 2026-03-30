@@ -1,0 +1,76 @@
+# PDCA CLI - AI向けガイド
+
+## このツールについて
+プログラミングスクール受講生の日次学習報告(PDCA)を送信するCLIツール。
+学習計画の設定、週次目標の管理、日次報告の作成ができる。
+
+## 典型的な利用フロー
+1. `bin/pdca plan setup` で学習計画を設定
+2. `bin/pdca goal create` で週次目標を設定（学習計画から選択）
+3. `bin/pdca report create` で日次報告を作成
+
+## 主要コマンド
+
+### 学習計画
+```bash
+# 学習計画の設定
+bin/pdca plan setup --name "コース名" --categories "カテゴリ1" "カテゴリ2" --json
+
+# 学習計画の確認
+bin/pdca plan show --json
+
+# カテゴリ追加
+bin/pdca plan add --name "新カテゴリ" --hours 10 --json
+```
+
+### 週次目標
+```bash
+# 学習計画のカテゴリから選んで目標作成
+bin/pdca goal create --category_ids 40 41 --json
+
+# 自由入力で目標作成
+bin/pdca goal create --items "目標1" "目標2" --json
+
+# 今週の目標を確認
+bin/pdca goal current --json
+
+# 目標一覧
+bin/pdca goal list --json
+```
+
+### PDCA報告
+```bash
+# 報告作成
+bin/pdca report create --status green --plan "学習内容" --do "実施内容" --check "振り返り" --action "次のアクション" --json
+
+# 今日の報告取得
+bin/pdca report today --json
+
+# 報告更新
+bin/pdca report update --date YYYY-MM-DD --do "..." --check "..." --action "..." --json
+
+# 報告一覧
+bin/pdca report list --month YYYY-MM --json
+```
+
+## learning_status の値
+- `green`: 順調、問題なし
+- `yellow`: 少し詰まっているが対処できそう
+- `red`: 完全に止まっている
+
+## 注意事項
+- `--json` フラグで機械可読なJSON出力を得る（AI連携時は常に使用推奨）
+- report_date は YYYY-MM-DD 形式（省略時は今日）
+- 1日1報告の制約あり（同じ日付で再度createするとエラー、updateで更新）
+- 未来日はPlanのみ入力可能（Do/Check/Actionは無視される）
+- `--category_ids` は `plan show --json` で取得できるカテゴリIDを指定
+
+## 終了コード
+- 0: 成功
+- 1: 認証エラー / ネットワークエラー
+- 2: バリデーションエラー
+
+## 設定
+- 設定ファイル: `~/.pdca.yml`（api_url, token）
+- 環境変数: `PDCA_API_URL`, `PDCA_TOKEN` で上書き可能
+- 初回は `bin/pdca login` でセットアップが必要
