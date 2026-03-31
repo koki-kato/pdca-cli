@@ -15,7 +15,9 @@ module PdcaCli
     end
 
     def initialize(api_url:, token: nil)
-      @api_url = api_url.chomp("/")
+      url = api_url.strip.chomp("/")
+      url = "https://#{url}" unless url.match?(%r{\Ahttps?://})
+      @api_url = url
       @token = token
     end
 
@@ -94,24 +96,24 @@ module PdcaCli
 
     def get(path, query = {})
       uri = build_uri(path, query)
-      request = Net::HTTP::Get.new(uri)
-      execute(request)
+      request = Net::HTTP::Get.new(uri.request_uri)
+      execute(uri, request)
     end
 
     def post(path, body, auth: true)
       uri = build_uri(path)
-      request = Net::HTTP::Post.new(uri)
+      request = Net::HTTP::Post.new(uri.request_uri)
       request.body = body.to_json
       request["Content-Type"] = "application/json"
-      execute(request, auth: auth)
+      execute(uri, request, auth: auth)
     end
 
     def patch(path, body)
       uri = build_uri(path)
-      request = Net::HTTP::Patch.new(uri)
+      request = Net::HTTP::Patch.new(uri.request_uri)
       request.body = body.to_json
       request["Content-Type"] = "application/json"
-      execute(request)
+      execute(uri, request)
     end
 
     def build_uri(path, query = {})
@@ -120,11 +122,10 @@ module PdcaCli
       uri
     end
 
-    def execute(request, auth: true)
+    def execute(uri, request, auth: true)
       request["Authorization"] = "Bearer #{@token}" if auth && @token
       request["Accept"] = "application/json"
 
-      uri = URI.parse(request.uri.to_s)
       http = Net::HTTP.new(uri.host, uri.port)
       http.use_ssl = (uri.scheme == "https")
       http.open_timeout = 10
