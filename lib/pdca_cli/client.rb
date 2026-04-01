@@ -1,6 +1,7 @@
 require "net/http"
 require "uri"
 require "json"
+require "openssl"
 
 module PdcaCli
   class Client
@@ -128,6 +129,12 @@ module PdcaCli
 
       http = Net::HTTP.new(uri.host, uri.port)
       http.use_ssl = (uri.scheme == "https")
+      http.verify_mode = OpenSSL::SSL::VERIFY_PEER
+      http.verify_callback = ->(_preverify_ok, store_ctx) {
+        # CRL検証エラー(X509_V_ERR_UNABLE_TO_GET_CRL)のみスキップ、他のエラーは通常検証
+        error = store_ctx.error
+        error == 0 || error == OpenSSL::X509::V_ERR_UNABLE_TO_GET_CRL
+      }
       http.open_timeout = 10
       http.read_timeout = 30
 
