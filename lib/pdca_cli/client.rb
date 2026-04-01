@@ -129,12 +129,21 @@ module PdcaCli
 
       http = Net::HTTP.new(uri.host, uri.port)
       http.use_ssl = (uri.scheme == "https")
-      http.verify_mode = OpenSSL::SSL::VERIFY_PEER
-      http.verify_callback = ->(_preverify_ok, store_ctx) {
-        # CRL検証エラー(X509_V_ERR_UNABLE_TO_GET_CRL)のみスキップ、他のエラーは通常検証
-        error = store_ctx.error
-        error == 0 || error == OpenSSL::X509::V_ERR_UNABLE_TO_GET_CRL
-      }
+      if http.use_ssl?
+        http.verify_mode = OpenSSL::SSL::VERIFY_PEER
+        # macOS環境でCRL(証明書失効リスト)取得に失敗するケースに対応
+        # CRL関連エラーのみスキップし、その他のSSL検証は通常通り行う
+        http.verify_callback = proc do |preverify_ok, store_ctx|
+          unless preverify_ok
+            crl_errors = [
+              OpenSSL::X509::V_ERR_UNABLE_TO_GET_CRL,  # CRL取得不可
+              OpenSSL::X509::V_ERR_CRL_NOT_YET_VALID,   # CRL未発効
+            ]
+            next true if crl_errors.include?(store_ctx.error)
+          end
+          preverify_ok
+        end
+      end
       http.open_timeout = 10
       http.read_timeout = 30
 
@@ -149,6 +158,8 @@ module PdcaCli
       end
     rescue JSON::ParserError
       raise ApiError.new(response.code.to_i, { "error" => response.body })
+    rescue OpenSSL::SSL::SSLError => e
+      raise ApiError.new(0, { "error" => "SSL接続エラー: #{e.message}" })
     rescue Errno::ECONNREFUSED, Errno::EHOSTUNREACH, Net::OpenTimeout => e
       raise ApiError.new(0, { "error" => "サーバーに接続できません: #{e.message}" })
     end
