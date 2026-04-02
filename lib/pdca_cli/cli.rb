@@ -460,6 +460,7 @@ module PdcaCli
       option :week_start, type: :string, desc: "週の開始日 (YYYY-MM-DD, デフォルト: 今週)"
       option :items, type: :array, desc: "目標リスト（スペース区切り）"
       option :category_ids, type: :array, desc: "カテゴリIDリスト（学習計画から選択）"
+      option :force, type: :boolean, default: false, desc: "既存の目標を上書きする"
       def create
         client = CLI.require_auth_from(self)
 
@@ -552,7 +553,7 @@ module PdcaCli
         end
 
         begin
-          result = client.create_weekly_goal(items: items, week_start: options[:week_start])
+          result = client.create_weekly_goal(items: items, week_start: options[:week_start], force: options[:force])
           goal = result["weekly_goal"]
 
           if options[:json]
@@ -564,7 +565,7 @@ module PdcaCli
         rescue Client::ApiError => e
           body = e.body
           if e.status == 409
-            CLI.error_output_from(self, body["error"] || "この週の目標は既に設定されています")
+            CLI.error_output_from(self, "この週の目標は既に設定されています。上書きするには --force オプションを使用してください。")
           elsif e.status == 422 && body["errors"]
             error_msg = body["errors"].map { |k, v| "#{k}: #{v.join(', ')}" }.join("\n")
             CLI.error_output_from(self, "バリデーションエラー\n#{error_msg}")
