@@ -575,7 +575,7 @@ module PdcaCli
         end
       end
 
-      desc "update", "週次目標の進捗を更新"
+      desc "update", "週次目標の進捗・内容を更新"
       option :json, type: :boolean, default: false, desc: "JSON形式で出力"
       def update
         client = CLI.require_auth_from(self)
@@ -592,19 +592,33 @@ module PdcaCli
 
           items = goal["items"]
           say ""
-          say "週次目標の進捗を更新します", :bold
+          say "週次目標を更新します", :bold
           say "#{goal['week_start_date']} ~ #{goal['week_end_date']}"
           say ""
 
           updated_items = items.map do |item|
             say "目標: #{item['content']} (現在: #{item['progress']}%)"
+
+            # 内容の変更
+            content_input = ask("内容変更 [Enterでスキップ]:")
+            content = if content_input.nil? || content_input.strip.empty?
+                        nil
+                      else
+                        content_input.strip
+                      end
+
+            # 進捗率の更新
             progress_input = ask("進捗率 [#{item['progress']}]:")
             progress = if progress_input.nil? || progress_input.strip.empty?
                          item["progress"]
                        else
                          [[progress_input.to_i, 0].max, 100].min
                        end
-            { id: item["id"], progress: progress }
+
+            updated = { id: item["id"], progress: progress }
+            updated[:content] = content if content
+            say ""
+            updated
           end
 
           result = client.update_weekly_goal(goal["id"], items: updated_items)
@@ -614,11 +628,11 @@ module PdcaCli
             say result.to_json
           else
             say ""
-            say "進捗を更新しました", :green
+            say "目標を更新しました", :green
             print_goal(updated_goal)
           end
         rescue Client::ApiError => e
-          CLI.error_output_from(self, e.body["error"] || "進捗の更新に失敗しました")
+          CLI.error_output_from(self, e.body["error"] || "目標の更新に失敗しました")
           exit 2
         end
       end
