@@ -539,6 +539,14 @@ module PdcaCli
             exit 0
           end
 
+          if options[:force]
+            say "⚠ 既存の週次目標が削除されます。", :yellow
+            unless yes?("続行しますか？ [Y/n]")
+              say "キャンセルしました。", :yellow
+              exit 0
+            end
+          end
+
           say ""
           say "--- 確認 ---"
           items.each_with_index do |item, i|
