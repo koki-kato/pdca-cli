@@ -70,9 +70,10 @@ module PdcaCli
       get("/api/v1/weekly_goals", query)
     end
 
-    def create_weekly_goal(items:, week_start: nil)
+    def create_weekly_goal(items:, week_start: nil, force: false)
       body = { items: items }
       body[:week_start] = week_start if week_start
+      body[:force] = true if force
       post("/api/v1/weekly_goals", body)
     end
 

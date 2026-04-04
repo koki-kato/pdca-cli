@@ -34,6 +34,9 @@ bin/pdca goal create --items "目標1" "目標2" --json
 # 今週の目標を確認
 bin/pdca goal current --json
 
+# 既存の目標を上書きして再作成（⚠️ 実行前に現在の目標を確認し、ユーザーに上書き確認を取ること）
+bin/pdca goal create --items "新目標" --force --json
+
 # 目標一覧
 bin/pdca goal list --json
 ```
@@ -64,6 +67,7 @@ bin/pdca report list --month YYYY-MM --json
 - 1日1報告の制約あり（同じ日付で再度createするとエラー、updateで更新）
 - 未来日はPlanのみ入力可能（Do/Check/Actionは無視される）
 - `--category_ids` は `plan show --json` で取得できるカテゴリIDを指定
+- `--force` による目標上書きは既存目標を削除するため、必ずユーザーに確認を取る
 
 ## 終了コード
 - 0: 成功
