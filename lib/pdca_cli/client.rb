@@ -94,6 +94,18 @@ module PdcaCli
       post("/api/v1/plan/categories", { name: name, estimated_hours: estimated_hours })
     end
 
+    # 講師向け: 受講生
+    def list_students(status: nil, team_id: nil)
+      query = {}
+      query[:status] = status if status
+      query[:team_id] = team_id if team_id
+      get("/api/v1/instructor/students", query)
+    end
+
+    def show_student(id)
+      get("/api/v1/instructor/students/#{id}")
+    end
+
     private
 
     def get(path, query = {})

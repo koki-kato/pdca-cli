@@ -660,6 +660,85 @@ module PdcaCli
       end
     }
 
+    desc "student SUBCOMMAND", "【講師】受講生の管理"
+    subcommand "student", Class.new(Thor) { @_thor_name = "pdca student"
+
+      desc "list", "受講生一覧を表示"
+      option :json, type: :boolean, default: false, desc: "JSON形式で出力"
+      option :status, type: :string, desc: "ステータスでフィルタ (active/inactive)"
+      option :team_id, type: :numeric, desc: "チームIDでフィルタ"
+      def list
+        client = CLI.require_auth_from(self)
+
+        begin
+          result = client.list_students(status: options[:status], team_id: options[:team_id])
+          students = result["students"]
+
+          if options[:json]
+            say result.to_json
+          elsif students.empty?
+            say "受講生が見つかりません。", :yellow
+          else
+            say "受講生一覧 (#{result['total']}名)", :bold
+            say ""
+            students.each do |s|
+              teams = s["teams"].join(", ")
+              latest = s["latest_report_date"] ? Date.parse(s["latest_report_date"]).iso8601 : "未報告"
+              say "  #{s['id']}  #{s['name']}  [#{teams}]  最終報告: #{latest}"
+            end
+          end
+        rescue Client::ApiError => e
+          if e.status == 403
+            CLI.error_output_from(self, "この操作は講師のみ実行可能です")
+          else
+            CLI.error_output_from(self, e.body["error"] || "受講生一覧の取得に失敗しました")
+          end
+          exit 1
+        end
+      end
+
+      desc "show", "受講生の詳細情報を表示"
+      option :json, type: :boolean, default: false, desc: "JSON形式で出力"
+      option :id, type: :numeric, required: true, desc: "受講生ID"
+      def show
+        client = CLI.require_auth_from(self)
+
+        begin
+          result = client.show_student(options[:id])
+          student = result["student"]
+
+          if options[:json]
+            say result.to_json
+          else
+            say "受講生詳細", :bold
+            say ""
+            say "  名前:     #{student['name']}"
+            say "  メール:   #{student['email']}"
+            say "  状態:     #{student['status']}"
+            say "  チーム:   #{student['teams'].join(', ')}"
+            latest = student['latest_report_date'] ? Date.parse(student['latest_report_date']).iso8601 : "未報告"
+            say "  最終報告: #{latest}"
+            say ""
+            if student["courses"] && !student["courses"].empty?
+              say "  コース:"
+              student["courses"].each do |c|
+                say "    - #{c['name']} (#{c['status']})"
+              end
+            end
+          end
+        rescue Client::ApiError => e
+          if e.status == 403
+            CLI.error_output_from(self, "この操作は講師のみ実行可能です")
+          elsif e.status == 404
+            CLI.error_output_from(self, "受講生が見つかりません")
+          else
+            CLI.error_output_from(self, e.body["error"] || "受講生情報の取得に失敗しました")
+          end
+          exit 1
+        end
+      end
+    }
+
     no_commands do
       def require_auth!
         config = Config.new
