@@ -896,7 +896,7 @@ module PdcaCli
               say "  #{group['meeting_day_name']} (#{week_start} ~ #{week_end})", :bold
               say ""
               (group["students"] || []).each do |s|
-                statuses = (s["daily_statuses"] || {}).map { |_date, st|
+                statuses = (s["daily_statuses"] || {}).sort_by { |date, _| date }.map { |_date, st|
                   case st
                   when "green" then "G"
                   when "yellow" then "Y"
@@ -931,7 +931,7 @@ module PdcaCli
 
         begin
           result = client.list_comments(report_id: options[:report_id])
-          comments = result["comments"]
+          comments = result["comments"] || []
           ai_comment = result["ai_comment"]
 
           if options[:json]
