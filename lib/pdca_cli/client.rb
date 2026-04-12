@@ -106,6 +106,17 @@ module PdcaCli
       get("/api/v1/instructor/students/#{id}")
     end
 
+    # 講師向け: 進捗確認
+    def list_progress(team_id: nil)
+      query = {}
+      query[:team_id] = team_id if team_id
+      get("/api/v1/instructor/progress", query)
+    end
+
+    def show_progress(id)
+      get("/api/v1/instructor/progress/#{id}")
+    end
+
     private
 
     def get(path, query = {})
