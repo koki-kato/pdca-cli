@@ -682,7 +682,7 @@ module PdcaCli
             say "受講生一覧 (#{result['total']}名)", :bold
             say ""
             students.each do |s|
-              teams = s["teams"].join(", ")
+              teams = (s["teams"] || []).join(", ")
               latest = s["latest_report_date"] ? Date.parse(s["latest_report_date"]).iso8601 : "未報告"
               say "  #{s['id']}  #{s['name']}  [#{teams}]  最終報告: #{latest}"
             end
@@ -715,7 +715,7 @@ module PdcaCli
             say "  名前:     #{student['name']}"
             say "  メール:   #{student['email']}"
             say "  状態:     #{student['status']}"
-            say "  チーム:   #{student['teams'].join(', ')}"
+            say "  チーム:   #{(student['teams'] || []).join(', ')}"
             latest = student['latest_report_date'] ? Date.parse(student['latest_report_date']).iso8601 : "未報告"
             say "  最終報告: #{latest}"
             say ""
