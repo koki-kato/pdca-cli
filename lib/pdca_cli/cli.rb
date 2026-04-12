@@ -920,6 +920,120 @@ module PdcaCli
       end
     }
 
+    desc "comment SUBCOMMAND", "報告へのコメント操作"
+    subcommand "comment", Class.new(Thor) { @_thor_name = "pdca comment"
+
+      desc "list", "報告のコメントを表示"
+      option :json, type: :boolean, default: false, desc: "JSON形式で出力"
+      option :report_id, type: :numeric, required: true, desc: "報告ID"
+      def list
+        client = CLI.require_auth_from(self)
+
+        begin
+          result = client.list_comments(report_id: options[:report_id])
+          comments = result["comments"]
+          ai_comment = result["ai_comment"]
+
+          if options[:json]
+            say result.to_json
+          else
+            say "コメント (報告ID: #{options[:report_id]})", :bold
+            say ""
+            if ai_comment
+              say "  [AI] #{ai_comment['content']}"
+              say "       #{ai_comment['created_at']}"
+              say ""
+            end
+            if comments.empty?
+              say "  コメントはありません。", :yellow unless ai_comment
+            else
+              comments.each do |c|
+                role_label = c["user"]["role"] == "instructor" ? "講師" : "受講生"
+                say "  [#{role_label}] #{c['user']['name']} (ID: #{c['id']})"
+                say "  #{c['content']}"
+                say "  #{c['created_at']}"
+                say ""
+              end
+            end
+          end
+        rescue Client::ApiError => e
+          if e.status == 400
+            CLI.error_output_from(self, "report_idは必須です")
+          else
+            CLI.error_output_from(self, e.body["error"] || "コメントの取得に失敗しました")
+          end
+          exit 1
+        end
+      end
+
+      desc "create", "報告にコメントを投稿"
+      option :json, type: :boolean, default: false, desc: "JSON形式で出力"
+      option :report_id, type: :numeric, required: true, desc: "報告ID"
+      option :content, type: :string, desc: "コメント内容"
+      def create
+        client = CLI.require_auth_from(self)
+
+        content = options[:content]
+        unless content
+          content = ask("コメント内容:")
+          if content.nil? || content.strip.empty?
+            say "キャンセルしました。", :yellow
+            exit 0
+          end
+        end
+
+        begin
+          result = client.create_comment(report_id: options[:report_id], content: content)
+          comment = result["comment"]
+
+          if options[:json]
+            say result.to_json
+          else
+            say "コメントを投稿しました (ID: #{comment['id']})", :green
+          end
+        rescue Client::ApiError => e
+          if e.status == 422
+            errors = e.body["errors"]
+            if errors
+              error_msg = errors.map { |k, v| "#{k}: #{v.join(', ')}" }.join("\n")
+              CLI.error_output_from(self, "バリデーションエラー\n#{error_msg}")
+            else
+              CLI.error_output_from(self, e.body["error"] || "コメントの投稿に失敗しました")
+            end
+          else
+            CLI.error_output_from(self, e.body["error"] || "コメントの投稿に失敗しました")
+          end
+          exit 2
+        end
+      end
+
+      desc "delete", "コメントを削除"
+      option :json, type: :boolean, default: false, desc: "JSON形式で出力"
+      option :id, type: :numeric, required: true, desc: "コメントID"
+      def delete
+        client = CLI.require_auth_from(self)
+
+        begin
+          client.delete_comment(options[:id])
+
+          if options[:json]
+            say({ message: "コメントを削除しました" }.to_json)
+          else
+            say "コメントを削除しました (ID: #{options[:id]})", :green
+          end
+        rescue Client::ApiError => e
+          if e.status == 403
+            CLI.error_output_from(self, "削除権限がありません")
+          elsif e.status == 404
+            CLI.error_output_from(self, "コメントが見つかりません")
+          else
+            CLI.error_output_from(self, e.body["error"] || "コメントの削除に失敗しました")
+          end
+          exit 1
+        end
+      end
+    }
+
     no_commands do
       def require_auth!
         config = Config.new
