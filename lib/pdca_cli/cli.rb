@@ -739,6 +739,85 @@ module PdcaCli
       end
     }
 
+    desc "progress SUBCOMMAND", "【講師】受講生の進捗確認"
+    subcommand "progress", Class.new(Thor) { @_thor_name = "pdca progress"
+
+      desc "list", "受講生の進捗一覧を表示"
+      option :json, type: :boolean, default: false, desc: "JSON形式で出力"
+      option :team_id, type: :numeric, desc: "チームIDでフィルタ"
+      def list
+        client = CLI.require_auth_from(self)
+
+        begin
+          result = client.list_progress(team_id: options[:team_id])
+          students = result["students"]
+
+          if options[:json]
+            say result.to_json
+          elsif students.empty?
+            say "受講生が見つかりません。", :yellow
+          else
+            say "進捗一覧", :bold
+            say ""
+            students.each do |s|
+              teams = (s["teams"] || []).join(", ")
+              say "  #{s['name']}  [#{teams}]"
+              (s["courses"] || []).each do |c|
+                bar = "=" * (c["completion_rate"] / 5) + "-" * (20 - c["completion_rate"] / 5)
+                say "    #{c['name']}  [#{bar}] #{c['completion_rate']}% (#{c['completed_categories']}/#{c['total_categories']})"
+              end
+            end
+          end
+        rescue Client::ApiError => e
+          if e.status == 403
+            CLI.error_output_from(self, "この操作は講師のみ実行可能です")
+          else
+            CLI.error_output_from(self, e.body["error"] || "進捗一覧の取得に失敗しました")
+          end
+          exit 1
+        end
+      end
+
+      desc "show", "受講生の進捗詳細を表示"
+      option :json, type: :boolean, default: false, desc: "JSON形式で出力"
+      option :id, type: :numeric, required: true, desc: "受講生ID"
+      def show
+        client = CLI.require_auth_from(self)
+
+        begin
+          result = client.show_progress(options[:id])
+          student = result["student"]
+          courses = result["courses"]
+
+          if options[:json]
+            say result.to_json
+          else
+            say "#{student['name']} の進捗", :bold
+            say ""
+            (courses || []).each do |c|
+              bar = "=" * (c["completion_rate"] / 5) + "-" * (20 - c["completion_rate"] / 5)
+              say "  #{c['name']}  [#{bar}] #{c['completion_rate']}%"
+              say ""
+              (c["categories"] || []).each do |cat|
+                mark = cat["completed"] ? "[x]" : "[ ]"
+                say "    #{mark} #{cat['name']}"
+              end
+              say ""
+            end
+          end
+        rescue Client::ApiError => e
+          if e.status == 403
+            CLI.error_output_from(self, "この操作は講師のみ実行可能です")
+          elsif e.status == 404
+            CLI.error_output_from(self, "受講生が見つかりません")
+          else
+            CLI.error_output_from(self, e.body["error"] || "進捗情報の取得に失敗しました")
+          end
+          exit 1
+        end
+      end
+    }
+
     no_commands do
       def require_auth!
         config = Config.new
