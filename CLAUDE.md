@@ -56,6 +56,49 @@ bin/pdca report update --date YYYY-MM-DD --do "..." --check "..." --action "..."
 bin/pdca report list --month YYYY-MM --json
 ```
 
+### 講師向け: 受講生管理
+```bash
+# 受講生一覧
+bin/pdca student list --json
+bin/pdca student list --status active --json
+
+# 受講生詳細
+bin/pdca student show --id 1 --json
+```
+
+### 講師向け: 進捗確認
+```bash
+# 全受講生の進捗一覧
+bin/pdca progress list --json
+
+# 受講生個別の進捗詳細
+bin/pdca progress show --id 1 --json
+```
+
+### 講師向け: ダッシュボード
+```bash
+# 日別報告状況（デフォルト: 昨日）
+bin/pdca dashboard daily --json
+bin/pdca dashboard daily --date 2026-04-11 --json
+bin/pdca dashboard daily --status not_submitted --json
+
+# 週別報告状況（デフォルト: 今週）
+bin/pdca dashboard weekly --json
+bin/pdca dashboard weekly --week_offset -1 --json
+```
+
+### コメント（講師・受講生共通）
+```bash
+# コメント一覧（report_idはreport list等で取得）
+bin/pdca comment list --report_id 1 --json
+
+# コメント投稿
+bin/pdca comment create --report_id 1 --content "コメント内容" --json
+
+# コメント削除（投稿者本人のみ）
+bin/pdca comment delete --id 1 --json
+```
+
 ## learning_status の値
 - `green`: 順調、問題なし
 - `yellow`: 少し詰まっているが対処できそう

@@ -739,6 +739,301 @@ module PdcaCli
       end
     }
 
+    desc "progress SUBCOMMAND", "【講師】受講生の進捗確認"
+    subcommand "progress", Class.new(Thor) { @_thor_name = "pdca progress"
+
+      desc "list", "受講生の進捗一覧を表示"
+      option :json, type: :boolean, default: false, desc: "JSON形式で出力"
+      option :team_id, type: :numeric, desc: "チームIDでフィルタ"
+      def list
+        client = CLI.require_auth_from(self)
+
+        begin
+          result = client.list_progress(team_id: options[:team_id])
+          students = result["students"]
+
+          if options[:json]
+            say result.to_json
+          elsif students.empty?
+            say "受講生が見つかりません。", :yellow
+          else
+            say "進捗一覧", :bold
+            say ""
+            students.each do |s|
+              teams = (s["teams"] || []).join(", ")
+              say "  #{s['name']}  [#{teams}]"
+              (s["courses"] || []).each do |c|
+                bar = "=" * (c["completion_rate"] / 5) + "-" * (20 - c["completion_rate"] / 5)
+                say "    #{c['name']}  [#{bar}] #{c['completion_rate']}% (#{c['completed_categories']}/#{c['total_categories']})"
+              end
+            end
+          end
+        rescue Client::ApiError => e
+          if e.status == 403
+            CLI.error_output_from(self, "この操作は講師のみ実行可能です")
+          else
+            CLI.error_output_from(self, e.body["error"] || "進捗一覧の取得に失敗しました")
+          end
+          exit 1
+        end
+      end
+
+      desc "show", "受講生の進捗詳細を表示"
+      option :json, type: :boolean, default: false, desc: "JSON形式で出力"
+      option :id, type: :numeric, required: true, desc: "受講生ID"
+      def show
+        client = CLI.require_auth_from(self)
+
+        begin
+          result = client.show_progress(options[:id])
+          student = result["student"]
+          courses = result["courses"]
+
+          if options[:json]
+            say result.to_json
+          else
+            say "#{student['name']} の進捗", :bold
+            say ""
+            (courses || []).each do |c|
+              bar = "=" * (c["completion_rate"] / 5) + "-" * (20 - c["completion_rate"] / 5)
+              say "  #{c['name']}  [#{bar}] #{c['completion_rate']}%"
+              say ""
+              (c["categories"] || []).each do |cat|
+                mark = cat["completed"] ? "[x]" : "[ ]"
+                say "    #{mark} #{cat['name']}"
+              end
+              say ""
+            end
+          end
+        rescue Client::ApiError => e
+          if e.status == 403
+            CLI.error_output_from(self, "この操作は講師のみ実行可能です")
+          elsif e.status == 404
+            CLI.error_output_from(self, "受講生が見つかりません")
+          else
+            CLI.error_output_from(self, e.body["error"] || "進捗情報の取得に失敗しました")
+          end
+          exit 1
+        end
+      end
+    }
+
+    desc "dashboard SUBCOMMAND", "【講師】報告状況ダッシュボード"
+    subcommand "dashboard", Class.new(Thor) { @_thor_name = "pdca dashboard"
+
+      desc "daily", "日別の報告状況を表示"
+      option :json, type: :boolean, default: false, desc: "JSON形式で出力"
+      option :date, type: :string, desc: "対象日 (YYYY-MM-DD, デフォルト: 昨日)"
+      option :team_id, type: :numeric, desc: "チームIDでフィルタ"
+      option :status, type: :string, desc: "ステータスでフィルタ (green/yellow/red/not_submitted)"
+      def daily
+        client = CLI.require_auth_from(self)
+
+        begin
+          result = client.dashboard_daily(
+            date: options[:date],
+            team_id: options[:team_id],
+            status: options[:status]
+          )
+          summary = result["summary"]
+          students = result["students"]
+
+          if options[:json]
+            say result.to_json
+          else
+            say "日次報告状況 (#{Date.parse(result['date']).iso8601})", :bold
+            say ""
+            say "  提出: #{summary['submitted']}/#{summary['total']}名"
+            say "  G:#{summary['green']}  Y:#{summary['yellow']}  R:#{summary['red']}  未提出:#{summary['not_submitted']}"
+            say ""
+            students.each do |s|
+              if s["submitted"] && s["report"]
+                r = s["report"]
+                icon = case r["learning_status"]
+                       when "green" then "G"
+                       when "yellow" then "Y"
+                       when "red" then "R"
+                       end
+                plan = (r["learning_plan"] || "")[0..30]
+                say "  [#{icon}] #{s['name']}  #{plan}"
+              else
+                say "  [-] #{s['name']}  (未提出)", :yellow
+              end
+            end
+          end
+        rescue Client::ApiError => e
+          if e.status == 403
+            CLI.error_output_from(self, "この操作は講師のみ実行可能です")
+          else
+            CLI.error_output_from(self, e.body["error"] || "ダッシュボードの取得に失敗しました")
+          end
+          exit 1
+        end
+      end
+
+      desc "weekly", "週別の報告状況を表示"
+      option :json, type: :boolean, default: false, desc: "JSON形式で出力"
+      option :week_offset, type: :numeric, default: 0, desc: "週オフセット (0=今週, -1=先週)"
+      option :team_id, type: :numeric, desc: "チームIDでフィルタ"
+      def weekly
+        client = CLI.require_auth_from(self)
+
+        begin
+          result = client.dashboard_weekly(
+            week_offset: options[:week_offset],
+            team_id: options[:team_id]
+          )
+          groups = result["meeting_day_groups"]
+
+          if options[:json]
+            say result.to_json
+          else
+            say "週次報告状況 (offset: #{result['week_offset']})", :bold
+            say ""
+            (groups || []).each do |group|
+              week_start = Date.parse(group["week_start"]).iso8601
+              week_end = Date.parse(group["week_end"]).iso8601
+              say "  #{group['meeting_day_name']} (#{week_start} ~ #{week_end})", :bold
+              say ""
+              (group["students"] || []).each do |s|
+                statuses = (s["daily_statuses"] || {}).sort_by { |date, _| date }.map { |_date, st|
+                  case st
+                  when "green" then "G"
+                  when "yellow" then "Y"
+                  when "red" then "R"
+                  else "-"
+                  end
+                }.join(" ")
+                say "    #{s['name']}  [#{statuses}]"
+              end
+              say ""
+            end
+          end
+        rescue Client::ApiError => e
+          if e.status == 403
+            CLI.error_output_from(self, "この操作は講師のみ実行可能です")
+          else
+            CLI.error_output_from(self, e.body["error"] || "ダッシュボードの取得に失敗しました")
+          end
+          exit 1
+        end
+      end
+    }
+
+    desc "comment SUBCOMMAND", "報告へのコメント操作"
+    subcommand "comment", Class.new(Thor) { @_thor_name = "pdca comment"
+
+      desc "list", "報告のコメントを表示"
+      option :json, type: :boolean, default: false, desc: "JSON形式で出力"
+      option :report_id, type: :numeric, required: true, desc: "報告ID"
+      def list
+        client = CLI.require_auth_from(self)
+
+        begin
+          result = client.list_comments(report_id: options[:report_id])
+          comments = result["comments"] || []
+          ai_comment = result["ai_comment"]
+
+          if options[:json]
+            say result.to_json
+          else
+            say "コメント (報告ID: #{options[:report_id]})", :bold
+            say ""
+            if ai_comment
+              say "  [AI] #{ai_comment['content']}"
+              say "       #{ai_comment['created_at']}"
+              say ""
+            end
+            if comments.empty?
+              say "  コメントはありません。", :yellow unless ai_comment
+            else
+              comments.each do |c|
+                role_label = c["user"]["role"] == "instructor" ? "講師" : "受講生"
+                say "  [#{role_label}] #{c['user']['name']} (ID: #{c['id']})"
+                say "  #{c['content']}"
+                say "  #{c['created_at']}"
+                say ""
+              end
+            end
+          end
+        rescue Client::ApiError => e
+          if e.status == 400
+            CLI.error_output_from(self, "report_idは必須です")
+          else
+            CLI.error_output_from(self, e.body["error"] || "コメントの取得に失敗しました")
+          end
+          exit 1
+        end
+      end
+
+      desc "create", "報告にコメントを投稿"
+      option :json, type: :boolean, default: false, desc: "JSON形式で出力"
+      option :report_id, type: :numeric, required: true, desc: "報告ID"
+      option :content, type: :string, desc: "コメント内容"
+      def create
+        client = CLI.require_auth_from(self)
+
+        content = options[:content]
+        unless content
+          content = ask("コメント内容:")
+          if content.nil? || content.strip.empty?
+            say "キャンセルしました。", :yellow
+            exit 0
+          end
+        end
+
+        begin
+          result = client.create_comment(report_id: options[:report_id], content: content)
+          comment = result["comment"]
+
+          if options[:json]
+            say result.to_json
+          else
+            say "コメントを投稿しました (ID: #{comment['id']})", :green
+          end
+        rescue Client::ApiError => e
+          if e.status == 422
+            errors = e.body["errors"]
+            if errors
+              error_msg = errors.map { |k, v| "#{k}: #{v.join(', ')}" }.join("\n")
+              CLI.error_output_from(self, "バリデーションエラー\n#{error_msg}")
+            else
+              CLI.error_output_from(self, e.body["error"] || "コメントの投稿に失敗しました")
+            end
+          else
+            CLI.error_output_from(self, e.body["error"] || "コメントの投稿に失敗しました")
+          end
+          exit 2
+        end
+      end
+
+      desc "delete", "コメントを削除"
+      option :json, type: :boolean, default: false, desc: "JSON形式で出力"
+      option :id, type: :numeric, required: true, desc: "コメントID"
+      def delete
+        client = CLI.require_auth_from(self)
+
+        begin
+          client.delete_comment(options[:id])
+
+          if options[:json]
+            say({ message: "コメントを削除しました" }.to_json)
+          else
+            say "コメントを削除しました (ID: #{options[:id]})", :green
+          end
+        rescue Client::ApiError => e
+          if e.status == 403
+            CLI.error_output_from(self, "削除権限がありません")
+          elsif e.status == 404
+            CLI.error_output_from(self, "コメントが見つかりません")
+          else
+            CLI.error_output_from(self, e.body["error"] || "コメントの削除に失敗しました")
+          end
+          exit 1
+        end
+      end
+    }
+
     no_commands do
       def require_auth!
         config = Config.new
