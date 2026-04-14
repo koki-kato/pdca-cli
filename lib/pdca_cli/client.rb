@@ -133,6 +133,19 @@ module PdcaCli
       get("/api/v1/instructor/dashboard/weekly", query)
     end
 
+    # コメント（講師・受講生共通）
+    def list_comments(report_id:)
+      get("/api/v1/comments", { report_id: report_id })
+    end
+
+    def create_comment(report_id:, content:)
+      post("/api/v1/comments", { report_id: report_id, content: content })
+    end
+
+    def delete_comment(id)
+      delete("/api/v1/comments/#{id}")
+    end
+
     private
 
     def get(path, query = {})
@@ -154,6 +167,12 @@ module PdcaCli
       request = Net::HTTP::Patch.new(uri.request_uri)
       request.body = body.to_json
       request["Content-Type"] = "application/json"
+      execute(uri, request)
+    end
+
+    def delete(path)
+      uri = build_uri(path)
+      request = Net::HTTP::Delete.new(uri.request_uri)
       execute(uri, request)
     end
 
@@ -188,7 +207,7 @@ module PdcaCli
       http.read_timeout = 30
 
       response = http.request(request)
-      body = response.body ? JSON.parse(response.body) : {}
+      body = (response.body && !response.body.empty?) ? JSON.parse(response.body) : {}
 
       case response.code.to_i
       when 200..299
