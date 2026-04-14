@@ -117,6 +117,22 @@ module PdcaCli
       get("/api/v1/instructor/progress/#{id}")
     end
 
+    # 講師向け: ダッシュボード
+    def dashboard_daily(date: nil, team_id: nil, status: nil)
+      query = {}
+      query[:date] = date if date
+      query[:team_id] = team_id if team_id
+      query[:status] = status if status
+      get("/api/v1/instructor/dashboard/daily", query)
+    end
+
+    def dashboard_weekly(week_offset: nil, team_id: nil)
+      query = {}
+      query[:week_offset] = week_offset if week_offset
+      query[:team_id] = team_id if team_id
+      get("/api/v1/instructor/dashboard/weekly", query)
+    end
+
     private
 
     def get(path, query = {})

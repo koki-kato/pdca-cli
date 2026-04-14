@@ -818,6 +818,108 @@ module PdcaCli
       end
     }
 
+    desc "dashboard SUBCOMMAND", "【講師】報告状況ダッシュボード"
+    subcommand "dashboard", Class.new(Thor) { @_thor_name = "pdca dashboard"
+
+      desc "daily", "日別の報告状況を表示"
+      option :json, type: :boolean, default: false, desc: "JSON形式で出力"
+      option :date, type: :string, desc: "対象日 (YYYY-MM-DD, デフォルト: 昨日)"
+      option :team_id, type: :numeric, desc: "チームIDでフィルタ"
+      option :status, type: :string, desc: "ステータスでフィルタ (green/yellow/red/not_submitted)"
+      def daily
+        client = CLI.require_auth_from(self)
+
+        begin
+          result = client.dashboard_daily(
+            date: options[:date],
+            team_id: options[:team_id],
+            status: options[:status]
+          )
+          summary = result["summary"]
+          students = result["students"]
+
+          if options[:json]
+            say result.to_json
+          else
+            say "日次報告状況 (#{Date.parse(result['date']).iso8601})", :bold
+            say ""
+            say "  提出: #{summary['submitted']}/#{summary['total']}名"
+            say "  G:#{summary['green']}  Y:#{summary['yellow']}  R:#{summary['red']}  未提出:#{summary['not_submitted']}"
+            say ""
+            students.each do |s|
+              if s["submitted"] && s["report"]
+                r = s["report"]
+                icon = case r["learning_status"]
+                       when "green" then "G"
+                       when "yellow" then "Y"
+                       when "red" then "R"
+                       end
+                plan = (r["learning_plan"] || "")[0..30]
+                say "  [#{icon}] #{s['name']}  #{plan}"
+              else
+                say "  [-] #{s['name']}  (未提出)", :yellow
+              end
+            end
+          end
+        rescue Client::ApiError => e
+          if e.status == 403
+            CLI.error_output_from(self, "この操作は講師のみ実行可能です")
+          else
+            CLI.error_output_from(self, e.body["error"] || "ダッシュボードの取得に失敗しました")
+          end
+          exit 1
+        end
+      end
+
+      desc "weekly", "週別の報告状況を表示"
+      option :json, type: :boolean, default: false, desc: "JSON形式で出力"
+      option :week_offset, type: :numeric, default: 0, desc: "週オフセット (0=今週, -1=先週)"
+      option :team_id, type: :numeric, desc: "チームIDでフィルタ"
+      def weekly
+        client = CLI.require_auth_from(self)
+
+        begin
+          result = client.dashboard_weekly(
+            week_offset: options[:week_offset],
+            team_id: options[:team_id]
+          )
+          groups = result["meeting_day_groups"]
+
+          if options[:json]
+            say result.to_json
+          else
+            say "週次報告状況 (offset: #{result['week_offset']})", :bold
+            say ""
+            (groups || []).each do |group|
+              week_start = Date.parse(group["week_start"]).iso8601
+              week_end = Date.parse(group["week_end"]).iso8601
+              say "  #{group['meeting_day_name']} (#{week_start} ~ #{week_end})", :bold
+              say ""
+              (group["students"] || []).each do |s|
+                statuses = (s["daily_statuses"] || {}).map { |_date, st|
+                  case st
+                  when "green" then "G"
+                  when "yellow" then "Y"
+                  when "red" then "R"
+                  else "-"
+                  end
+                }.join(" ")
+                say "    #{s['name']}  [#{statuses}]"
+              end
+              say ""
+            end
+          end
+        rescue Client::ApiError => e
+          if e.status == 403
+            CLI.error_output_from(self, "この操作は講師のみ実行可能です")
+          else
+            CLI.error_output_from(self, e.body["error"] || "ダッシュボードの取得に失敗しました")
+          end
+          exit 1
+        end
+      end
+    }
+
     no_commands do
       def require_auth!
         config = Config.new
