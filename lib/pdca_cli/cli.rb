@@ -682,6 +682,58 @@ module PdcaCli
         end
       end
 
+      desc "progress", "週次目標アイテムの進捗%を変更"
+      option :json, type: :boolean, default: false, desc: "JSON形式で出力"
+      option :goal_id, type: :numeric, desc: "週次目標ID（省略時は現在の週の目標）"
+      option :item_id, type: :numeric, desc: "対象アイテムID（単体更新時）"
+      option :progress, type: :numeric, desc: "進捗% (0-100、単体更新時必須)"
+      option :progresses, type: :array, desc: "一括更新 (例: \"5:50\" \"6:80\")"
+      def progress
+        client = CLI.require_auth_from(self)
+
+        if options[:item_id] && options[:progresses]
+          CLI.error_output_from(self, "--item_id/--progress と --progresses は同時に指定できません")
+          exit 2
+        end
+
+        items = build_progress_items(options)
+        if items.empty?
+          CLI.error_output_from(self, "--item_id --progress か --progresses を指定してください")
+          exit 2
+        end
+
+        goal_id = options[:goal_id]
+        unless goal_id
+          begin
+            current_result = client.current_weekly_goal
+            goal = current_result["weekly_goal"]
+            if goal.nil?
+              CLI.error_output_from(self, "現在の週の目標が見つかりません。--goal_id を指定してください")
+              exit 2
+            end
+            goal_id = goal["id"]
+          rescue Client::ApiError => e
+            CLI.error_output_from(self, e.body["error"] || "週次目標の取得に失敗しました")
+            exit 1
+          end
+        end
+
+        begin
+          result = client.update_weekly_goal_items(goal_id, items: items)
+          if options[:json]
+            say result.to_json
+          else
+            say "進捗を更新しました", :green
+            (result["weekly_goal"]["items"] || []).each do |item|
+              say "  ##{item['id']} [#{item['progress']}%] #{item['content']}"
+            end
+          end
+        rescue Client::ApiError => e
+          CLI.error_output_from(self, e.body["error"] || "進捗の更新に失敗しました")
+          exit 1
+        end
+      end
+
       no_commands do
         def print_goal(goal)
           say ""
@@ -691,6 +743,34 @@ module PdcaCli
           goal["items"].each_with_index do |item, i|
             bar = "=" * (item["progress"] / 5) + "-" * (20 - item["progress"] / 5)
             say "  #{i + 1}. #{item['content']} [#{bar}] #{item['progress']}%"
+          end
+        end
+
+        def build_progress_items(opts)
+          items = []
+          if opts[:item_id] && opts[:progress]
+            validate_progress_value(opts[:progress])
+            items << { id: opts[:item_id], progress: opts[:progress] }
+          end
+          if opts[:progresses]
+            opts[:progresses].each do |pair|
+              unless pair =~ /\A(\d+):(\d{1,3})\z/
+                CLI.error_output_from(self, "--progresses の形式が不正です（例: \"5:50\"）: #{pair}")
+                exit 2
+              end
+              id = $1.to_i
+              pct = $2.to_i
+              validate_progress_value(pct)
+              items << { id: id, progress: pct }
+            end
+          end
+          items
+        end
+
+        def validate_progress_value(value)
+          unless (0..100).cover?(value)
+            CLI.error_output_from(self, "進捗は0〜100の範囲で指定してください（指定値: #{value}）")
+            exit 2
           end
         end
       end
