@@ -148,7 +148,7 @@ module PdcaCli
 
     # 学習時間（S5 / #12）
     def create_study_time(date:, slot_type: "actual", slots:)
-      post("/api/v1/study_times", date: date, slot_type: slot_type, slots: slots)
+      post("/api/v1/study_times", { date: date, slot_type: slot_type, slots: slots })
     end
 
     def show_study_time(date:)
@@ -158,7 +158,7 @@ module PdcaCli
     # 週次目標進捗更新（E8 / #32）
     # items: [{ id: 1, progress: 50 }, ...]
     def update_weekly_goal_items(id, items:)
-      patch("/api/v1/weekly_goals/#{id}", items: items)
+      patch("/api/v1/weekly_goals/#{id}", { items: items })
     end
 
     # 日次目標（E6 + S3 / #21, #10）
@@ -170,7 +170,7 @@ module PdcaCli
     end
 
     def update_daily_goal_item(daily_goal_id:, item_id:, content:)
-      patch("/api/v1/daily_goals/#{daily_goal_id}/items/#{item_id}", content: content)
+      patch("/api/v1/daily_goals/#{daily_goal_id}/items/#{item_id}", { content: content })
     end
 
     private
