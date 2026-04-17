@@ -269,7 +269,7 @@ module PdcaCli
           end
           if report['code_content'] && !report['code_content'].empty?
             code = report['code_content']
-            display_code = code.length > 200 ? "#{code[0..200]}...(省略)" : code
+            display_code = code.length > 200 ? "#{code[0...200]}...(省略)" : code
             say "Code:"
             say display_code
           end
@@ -296,7 +296,12 @@ module PdcaCli
             CLI.error_output_from(self, "--code_file で指定されたファイルが見つかりません: #{opts[:code_file]}")
             exit 2
           end
-          File.read(opts[:code_file])
+          begin
+            File.read(opts[:code_file], encoding: "UTF-8")
+          rescue Errno::EACCES, Errno::EISDIR => e
+            CLI.error_output_from(self, "ファイルを読み込めません: #{e.message}")
+            exit 2
+          end
         end
       end
     }
@@ -918,7 +923,7 @@ module PdcaCli
             exit 2
           end
           item_id, content = pair.split("=", 2)
-          if item_id.to_i.to_s != item_id || content.to_s.empty?
+          if !item_id.match?(/\A[1-9]\d*\z/) || content.to_s.empty?
             CLI.error_output_from(self, "--plans の形式が不正です（例: \"101=内容\"）: #{pair}")
             exit 2
           end
@@ -937,7 +942,7 @@ module PdcaCli
         end
 
         if options[:json]
-          say ({ items: results }).to_json
+          say({ items: results }.to_json)
         else
           say "日次目標を更新しました (#{options[:date]})", :green
           results.each { |item| say "  ##{item['id']} #{item['content']}" }
