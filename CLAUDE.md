@@ -115,6 +115,7 @@ bin/pdca comment delete --id 1 --json
 - 未来日はPlanのみ入力可能（Do/Check/Actionは無視される）
 - `--category_ids` は `plan show --json` で取得できるカテゴリIDを指定
 - `--force` による目標上書きは既存目標を削除するため、必ずユーザーに確認を取る
+- `--team` はチーム名の完全一致でフィルタ（部分一致不可）。チーム名は `student list --json` で確認可能
 
 ## 終了コード
 - 0: 成功
