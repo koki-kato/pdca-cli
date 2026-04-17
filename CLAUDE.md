@@ -61,6 +61,7 @@ bin/pdca report list --month YYYY-MM --json
 # 受講生一覧
 bin/pdca student list --json
 bin/pdca student list --status active --json
+bin/pdca student list --team "Aチーム" --json
 
 # 受講生詳細
 bin/pdca student show --id 1 --json
@@ -70,6 +71,7 @@ bin/pdca student show --id 1 --json
 ```bash
 # 全受講生の進捗一覧
 bin/pdca progress list --json
+bin/pdca progress list --team "Aチーム" --json
 
 # 受講生個別の進捗詳細
 bin/pdca progress show --id 1 --json
@@ -81,10 +83,12 @@ bin/pdca progress show --id 1 --json
 bin/pdca dashboard daily --json
 bin/pdca dashboard daily --date 2026-04-11 --json
 bin/pdca dashboard daily --status not_submitted --json
+bin/pdca dashboard daily --team "Aチーム" --json
 
 # 週別報告状況（デフォルト: 今週）
 bin/pdca dashboard weekly --json
 bin/pdca dashboard weekly --week_offset -1 --json
+bin/pdca dashboard weekly --team "Aチーム" --json
 ```
 
 ### コメント（講師・受講生共通）
