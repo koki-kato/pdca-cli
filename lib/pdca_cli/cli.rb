@@ -666,12 +666,12 @@ module PdcaCli
       desc "list", "受講生一覧を表示"
       option :json, type: :boolean, default: false, desc: "JSON形式で出力"
       option :status, type: :string, desc: "ステータスでフィルタ (active/inactive)"
-      option :team_id, type: :numeric, desc: "チームIDでフィルタ"
+      option :team, type: :string, desc: "チーム名でフィルタ（完全一致）"
       def list
         client = CLI.require_auth_from(self)
 
         begin
-          result = client.list_students(status: options[:status], team_id: options[:team_id])
+          result = client.list_students(status: options[:status], team: options[:team])
           students = result["students"]
 
           if options[:json]
@@ -744,12 +744,12 @@ module PdcaCli
 
       desc "list", "受講生の進捗一覧を表示"
       option :json, type: :boolean, default: false, desc: "JSON形式で出力"
-      option :team_id, type: :numeric, desc: "チームIDでフィルタ"
+      option :team, type: :string, desc: "チーム名でフィルタ（完全一致）"
       def list
         client = CLI.require_auth_from(self)
 
         begin
-          result = client.list_progress(team_id: options[:team_id])
+          result = client.list_progress(team: options[:team])
           students = result["students"]
 
           if options[:json]
@@ -824,7 +824,7 @@ module PdcaCli
       desc "daily", "日別の報告状況を表示"
       option :json, type: :boolean, default: false, desc: "JSON形式で出力"
       option :date, type: :string, desc: "対象日 (YYYY-MM-DD, デフォルト: 昨日)"
-      option :team_id, type: :numeric, desc: "チームIDでフィルタ"
+      option :team, type: :string, desc: "チーム名でフィルタ（完全一致）"
       option :status, type: :string, desc: "ステータスでフィルタ (green/yellow/red/not_submitted)"
       def daily
         client = CLI.require_auth_from(self)
@@ -832,7 +832,7 @@ module PdcaCli
         begin
           result = client.dashboard_daily(
             date: options[:date],
-            team_id: options[:team_id],
+            team: options[:team],
             status: options[:status]
           )
           summary = result["summary"]
@@ -874,14 +874,14 @@ module PdcaCli
       desc "weekly", "週別の報告状況を表示"
       option :json, type: :boolean, default: false, desc: "JSON形式で出力"
       option :week_offset, type: :numeric, default: 0, desc: "週オフセット (0=今週, -1=先週)"
-      option :team_id, type: :numeric, desc: "チームIDでフィルタ"
+      option :team, type: :string, desc: "チーム名でフィルタ（完全一致）"
       def weekly
         client = CLI.require_auth_from(self)
 
         begin
           result = client.dashboard_weekly(
             week_offset: options[:week_offset],
-            team_id: options[:team_id]
+            team: options[:team]
           )
           groups = result["meeting_day_groups"]
 
