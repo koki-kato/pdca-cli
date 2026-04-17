@@ -77,8 +77,15 @@ module PdcaCli
       option :check, type: :string, desc: "Check: 振り返り"
       option :action, type: :string, desc: "Action: 次のアクション"
       option :curriculum, type: :string, desc: "カリキュラム名"
+      option :code, type: :string, desc: "提出コード内容（インライン）"
+      option :code_file, type: :string, desc: "提出コードをファイルから読み込む（--code と排他）"
       def create
         client = CLI.require_auth_from(self)
+
+        if options[:code] && options[:code_file]
+          CLI.error_output_from(self, "--code と --code_file は同時に指定できません")
+          exit 2
+        end
 
         # フラグが指定されていれば直接実行、なければ対話型
         if options[:status] || options[:plan]
@@ -197,8 +204,16 @@ module PdcaCli
       option :do, type: :string, desc: "Do: 実施内容"
       option :check, type: :string, desc: "Check: 振り返り"
       option :action, type: :string, desc: "Action: 次のアクション"
+      option :curriculum, type: :string, desc: "カリキュラム名"
+      option :code, type: :string, desc: "提出コード内容（インライン）"
+      option :code_file, type: :string, desc: "提出コードをファイルから読み込む（--code と排他）"
       def update
         client = CLI.require_auth_from(self)
+
+        if options[:code] && options[:code_file]
+          CLI.error_output_from(self, "--code と --code_file は同時に指定できません")
+          exit 2
+        end
 
         # まず日付で報告を検索
         begin
@@ -249,6 +264,15 @@ module PdcaCli
           say "Do:     #{report['learning_do'] || '(未入力)'}"
           say "Check:  #{report['learning_check'] || '(未入力)'}"
           say "Action: #{report['learning_action'] || '(未入力)'}"
+          if report['curriculum_name'] && !report['curriculum_name'].empty?
+            say "カリキュラム: #{report['curriculum_name']}"
+          end
+          if report['code_content'] && !report['code_content'].empty?
+            code = report['code_content']
+            display_code = code.length > 200 ? "#{code[0..200]}...(省略)" : code
+            say "Code:"
+            say display_code
+          end
         end
 
         def build_params_from_options
@@ -260,7 +284,19 @@ module PdcaCli
           params[:learning_check] = options[:check] if options[:check]
           params[:learning_action] = options[:action] if options[:action]
           params[:curriculum_name] = options[:curriculum] if options[:curriculum]
+          code = resolve_code_option(options)
+          params[:code_content] = code if code
           params
+        end
+
+        def resolve_code_option(opts)
+          return opts[:code] if opts[:code]
+          return nil unless opts[:code_file]
+          unless File.exist?(opts[:code_file])
+            CLI.error_output_from(self, "--code_file で指定されたファイルが見つかりません: #{opts[:code_file]}")
+            exit 2
+          end
+          File.read(opts[:code_file])
         end
       end
     }
