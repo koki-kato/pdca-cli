@@ -776,6 +776,65 @@ module PdcaCli
       end
     }
 
+    desc "study SUBCOMMAND", "学習時間の管理"
+    subcommand "study", Class.new(Thor) { @_thor_name = "pdca study"
+
+      desc "log", "学習時間の実績を記録"
+      option :json, type: :boolean, default: false, desc: "JSON形式で出力"
+      option :date, type: :string, desc: "対象日 (YYYY-MM-DD, デフォルト: 今日)"
+      option :slots, type: :array, required: true, desc: "時間帯 (例: \"09:00-12:00\" \"14:00-17:00\")"
+      def log
+        client = CLI.require_auth_from(self)
+        date = options[:date] || Date.today.iso8601
+
+        options[:slots].each do |s|
+          unless s =~ /\A\d{1,2}:\d{2}-\d{1,2}:\d{2}\z/
+            CLI.error_output_from(self, "時間帯の形式が不正です（例: \"09:00-12:00\"）: #{s}")
+            exit 2
+          end
+        end
+
+        begin
+          result = client.create_study_time(date: date, slot_type: "actual", slots: options[:slots])
+          if options[:json]
+            say result.to_json
+          else
+            say "学習時間を記録しました (#{date})", :green
+            (result["actual_slots"] || []).each do |slot|
+              say "  #{slot['start_time']} - #{slot['end_time']}"
+            end
+          end
+        rescue Client::ApiError => e
+          CLI.error_output_from(self, e.body["error"] || "学習時間の保存に失敗しました")
+          exit (e.status == 422 ? 2 : 1)
+        end
+      end
+
+      desc "show", "学習時間を表示"
+      option :json, type: :boolean, default: false, desc: "JSON形式で出力"
+      option :date, type: :string, desc: "対象日 (YYYY-MM-DD, デフォルト: 今日)"
+      def show
+        client = CLI.require_auth_from(self)
+        date = options[:date] || Date.today.iso8601
+
+        begin
+          result = client.show_study_time(date: date)
+          if options[:json]
+            say result.to_json
+          else
+            say "学習時間 (#{date})", :bold
+            say "  予定:"
+            (result["planned_slots"] || []).each { |s| say "    #{s['start_time']} - #{s['end_time']}" }
+            say "  実績:"
+            (result["actual_slots"] || []).each { |s| say "    #{s['start_time']} - #{s['end_time']}" }
+          end
+        rescue Client::ApiError => e
+          CLI.error_output_from(self, e.body["error"] || "学習時間の取得に失敗しました")
+          exit (e.status == 404 ? 2 : 1)
+        end
+      end
+    }
+
     desc "student SUBCOMMAND", "【講師】受講生の管理"
     subcommand "student", Class.new(Thor) { @_thor_name = "pdca student"
 
