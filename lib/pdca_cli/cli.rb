@@ -835,6 +835,116 @@ module PdcaCli
       end
     }
 
+    desc "daily SUBCOMMAND", "日次目標の管理"
+    subcommand "daily", Class.new(Thor) { @_thor_name = "pdca daily"
+
+      desc "show", "指定日の日次目標を表示"
+      option :json, type: :boolean, default: false, desc: "JSON形式で出力"
+      option :date, type: :string, desc: "対象日 (YYYY-MM-DD, デフォルト: 今日)"
+      def show
+        client = CLI.require_auth_from(self)
+        date = options[:date] || Date.today.iso8601
+
+        begin
+          result = client.show_daily_goals(date: date)
+          daily_goals = result["daily_goals"] || []
+          if options[:json]
+            say result.to_json
+          elsif daily_goals.empty?
+            say "日次目標が見つかりません (#{date})", :yellow
+          else
+            dg = daily_goals.first
+            say "日次目標 (#{dg['goal_date']})", :bold
+            (dg["items"] || []).each do |item|
+              say "  ##{item['id']} [#{item['progress']}%] #{item['content']}"
+            end
+          end
+        rescue Client::ApiError => e
+          CLI.error_output_from(self, e.body["error"] || "日次目標の取得に失敗しました")
+          exit 1
+        end
+      end
+
+      desc "list", "週単位で日次目標一覧を表示"
+      option :json, type: :boolean, default: false, desc: "JSON形式で出力"
+      option :week, type: :string, required: true, desc: "週頭日 (YYYY-MM-DD)"
+      def list
+        client = CLI.require_auth_from(self)
+        begin
+          result = client.show_daily_goals(week: options[:week])
+          daily_goals = result["daily_goals"] || []
+          if options[:json]
+            say result.to_json
+          elsif daily_goals.empty?
+            say "日次目標が見つかりません", :yellow
+          else
+            daily_goals.each do |dg|
+              say "#{dg['goal_date']}", :bold
+              (dg["items"] || []).each do |item|
+                say "  ##{item['id']} [#{item['progress']}%] #{item['content']}"
+              end
+            end
+          end
+        rescue Client::ApiError => e
+          CLI.error_output_from(self, e.body["error"] || "日次目標一覧の取得に失敗しました")
+          exit 1
+        end
+      end
+
+      desc "update", "日次目標アイテムの Plan 内容を更新"
+      option :json, type: :boolean, default: false, desc: "JSON形式で出力"
+      option :date, type: :string, required: true, desc: "対象日 (YYYY-MM-DD)"
+      option :plans, type: :array, required: true, desc: "更新内容 (例: \"101=Ruby基礎\" \"102=hash演習\")"
+      def update
+        client = CLI.require_auth_from(self)
+
+        begin
+          lookup = client.show_daily_goals(date: options[:date])
+          daily_goals = lookup["daily_goals"] || []
+          if daily_goals.empty?
+            CLI.error_output_from(self, "#{options[:date]} の日次目標が見つかりません")
+            exit 2
+          end
+          daily_goal_id = daily_goals.first["id"]
+        rescue Client::ApiError => e
+          CLI.error_output_from(self, e.body["error"] || "日次目標の取得に失敗しました")
+          exit 1
+        end
+
+        updates = []
+        options[:plans].each do |pair|
+          unless pair.include?("=")
+            CLI.error_output_from(self, "--plans の形式が不正です（例: \"101=内容\"）: #{pair}")
+            exit 2
+          end
+          item_id, content = pair.split("=", 2)
+          if item_id.to_i.to_s != item_id || content.to_s.empty?
+            CLI.error_output_from(self, "--plans の形式が不正です（例: \"101=内容\"）: #{pair}")
+            exit 2
+          end
+          updates << { item_id: item_id.to_i, content: content }
+        end
+
+        results = []
+        updates.each do |u|
+          begin
+            r = client.update_daily_goal_item(daily_goal_id: daily_goal_id, item_id: u[:item_id], content: u[:content])
+            results << r["item"]
+          rescue Client::ApiError => e
+            CLI.error_output_from(self, e.body["error"] || "アイテム #{u[:item_id]} の更新に失敗しました")
+            exit 1
+          end
+        end
+
+        if options[:json]
+          say ({ items: results }).to_json
+        else
+          say "日次目標を更新しました (#{options[:date]})", :green
+          results.each { |item| say "  ##{item['id']} #{item['content']}" }
+        end
+      end
+    }
+
     desc "student SUBCOMMAND", "【講師】受講生の管理"
     subcommand "student", Class.new(Thor) { @_thor_name = "pdca student"
 
