@@ -98,7 +98,7 @@ module PdcaCli
     def list_students(status: nil, team: nil)
       query = {}
       query[:status] = status if status
-      query[:team_name] = team if team && !team.empty?
+      query[:team_name] = team.strip if team.to_s.strip.presence
       get("/api/v1/instructor/students", query)
     end
 
@@ -109,7 +109,7 @@ module PdcaCli
     # 講師向け: 進捗確認
     def list_progress(team: nil)
       query = {}
-      query[:team_name] = team if team && !team.empty?
+      query[:team_name] = team.strip if team.to_s.strip.presence
       get("/api/v1/instructor/progress", query)
     end
 
@@ -121,7 +121,7 @@ module PdcaCli
     def dashboard_daily(date: nil, team: nil, status: nil)
       query = {}
       query[:date] = date if date
-      query[:team_name] = team if team && !team.empty?
+      query[:team_name] = team.strip if team.to_s.strip.presence
       query[:status] = status if status
       get("/api/v1/instructor/dashboard/daily", query)
     end
@@ -129,7 +129,7 @@ module PdcaCli
     def dashboard_weekly(week_offset: nil, team: nil)
       query = {}
       query[:week_offset] = week_offset if week_offset
-      query[:team_name] = team if team && !team.empty?
+      query[:team_name] = team.strip if team.to_s.strip.presence
       get("/api/v1/instructor/dashboard/weekly", query)
     end
 
