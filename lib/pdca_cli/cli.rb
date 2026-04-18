@@ -77,8 +77,15 @@ module PdcaCli
       option :check, type: :string, desc: "Check: 振り返り"
       option :action, type: :string, desc: "Action: 次のアクション"
       option :curriculum, type: :string, desc: "カリキュラム名"
+      option :code, type: :string, desc: "提出コード内容（インライン）"
+      option :code_file, type: :string, desc: "提出コードをファイルから読み込む（--code と排他）"
       def create
         client = CLI.require_auth_from(self)
+
+        if options[:code] && options[:code_file]
+          CLI.error_output_from(self, "--code と --code_file は同時に指定できません")
+          exit 2
+        end
 
         # フラグが指定されていれば直接実行、なければ対話型
         if options[:status] || options[:plan]
@@ -197,8 +204,16 @@ module PdcaCli
       option :do, type: :string, desc: "Do: 実施内容"
       option :check, type: :string, desc: "Check: 振り返り"
       option :action, type: :string, desc: "Action: 次のアクション"
+      option :curriculum, type: :string, desc: "カリキュラム名"
+      option :code, type: :string, desc: "提出コード内容（インライン）"
+      option :code_file, type: :string, desc: "提出コードをファイルから読み込む（--code と排他）"
       def update
         client = CLI.require_auth_from(self)
+
+        if options[:code] && options[:code_file]
+          CLI.error_output_from(self, "--code と --code_file は同時に指定できません")
+          exit 2
+        end
 
         # まず日付で報告を検索
         begin
@@ -249,6 +264,15 @@ module PdcaCli
           say "Do:     #{report['learning_do'] || '(未入力)'}"
           say "Check:  #{report['learning_check'] || '(未入力)'}"
           say "Action: #{report['learning_action'] || '(未入力)'}"
+          if report['curriculum_name'] && !report['curriculum_name'].empty?
+            say "カリキュラム: #{report['curriculum_name']}"
+          end
+          if report['code_content'] && !report['code_content'].empty?
+            code = report['code_content']
+            display_code = code.length > 200 ? "#{code[0...200]}...(省略)" : code
+            say "Code:"
+            say display_code
+          end
         end
 
         def build_params_from_options
@@ -260,7 +284,24 @@ module PdcaCli
           params[:learning_check] = options[:check] if options[:check]
           params[:learning_action] = options[:action] if options[:action]
           params[:curriculum_name] = options[:curriculum] if options[:curriculum]
+          code = resolve_code_option(options)
+          params[:code_content] = code if code
           params
+        end
+
+        def resolve_code_option(opts)
+          return opts[:code] if opts[:code]
+          return nil unless opts[:code_file]
+          unless File.exist?(opts[:code_file])
+            CLI.error_output_from(self, "--code_file で指定されたファイルが見つかりません: #{opts[:code_file]}")
+            exit 2
+          end
+          begin
+            File.read(opts[:code_file], encoding: "UTF-8")
+          rescue Errno::EACCES, Errno::EISDIR => e
+            CLI.error_output_from(self, "ファイルを読み込めません: #{e.message}")
+            exit 2
+          end
         end
       end
     }
@@ -646,6 +687,58 @@ module PdcaCli
         end
       end
 
+      desc "progress", "週次目標アイテムの進捗%を変更"
+      option :json, type: :boolean, default: false, desc: "JSON形式で出力"
+      option :goal_id, type: :numeric, desc: "週次目標ID（省略時は現在の週の目標）"
+      option :item_id, type: :numeric, desc: "対象アイテムID（単体更新時）"
+      option :progress, type: :numeric, desc: "進捗% (0-100、単体更新時必須)"
+      option :progresses, type: :array, desc: "一括更新 (例: \"5:50\" \"6:80\")"
+      def progress
+        client = CLI.require_auth_from(self)
+
+        if options[:item_id] && options[:progresses]
+          CLI.error_output_from(self, "--item_id/--progress と --progresses は同時に指定できません")
+          exit 2
+        end
+
+        items = build_progress_items(options)
+        if items.empty?
+          CLI.error_output_from(self, "--item_id --progress か --progresses を指定してください")
+          exit 2
+        end
+
+        goal_id = options[:goal_id]
+        unless goal_id
+          begin
+            current_result = client.current_weekly_goal
+            goal = current_result["weekly_goal"]
+            if goal.nil?
+              CLI.error_output_from(self, "現在の週の目標が見つかりません。--goal_id を指定してください")
+              exit 2
+            end
+            goal_id = goal["id"]
+          rescue Client::ApiError => e
+            CLI.error_output_from(self, e.body["error"] || "週次目標の取得に失敗しました")
+            exit 1
+          end
+        end
+
+        begin
+          result = client.update_weekly_goal_items(goal_id, items: items)
+          if options[:json]
+            say result.to_json
+          else
+            say "進捗を更新しました", :green
+            (result["weekly_goal"]["items"] || []).each do |item|
+              say "  ##{item['id']} [#{item['progress']}%] #{item['content']}"
+            end
+          end
+        rescue Client::ApiError => e
+          CLI.error_output_from(self, e.body["error"] || "進捗の更新に失敗しました")
+          exit 1
+        end
+      end
+
       no_commands do
         def print_goal(goal)
           say ""
@@ -656,6 +749,203 @@ module PdcaCli
             bar = "=" * (item["progress"] / 5) + "-" * (20 - item["progress"] / 5)
             say "  #{i + 1}. #{item['content']} [#{bar}] #{item['progress']}%"
           end
+        end
+
+        def build_progress_items(opts)
+          items = []
+          if opts[:item_id] && opts[:progress]
+            validate_progress_value(opts[:progress])
+            items << { id: opts[:item_id], progress: opts[:progress] }
+          end
+          if opts[:progresses]
+            opts[:progresses].each do |pair|
+              unless pair =~ /\A(\d+):(\d{1,3})\z/
+                CLI.error_output_from(self, "--progresses の形式が不正です（例: \"5:50\"）: #{pair}")
+                exit 2
+              end
+              id = $1.to_i
+              pct = $2.to_i
+              validate_progress_value(pct)
+              items << { id: id, progress: pct }
+            end
+          end
+          items
+        end
+
+        def validate_progress_value(value)
+          unless (0..100).cover?(value)
+            CLI.error_output_from(self, "進捗は0〜100の範囲で指定してください（指定値: #{value}）")
+            exit 2
+          end
+        end
+      end
+    }
+
+    desc "study SUBCOMMAND", "学習時間の管理"
+    subcommand "study", Class.new(Thor) { @_thor_name = "pdca study"
+
+      desc "log", "学習時間の実績を記録"
+      option :json, type: :boolean, default: false, desc: "JSON形式で出力"
+      option :date, type: :string, desc: "対象日 (YYYY-MM-DD, デフォルト: 今日)"
+      option :slots, type: :array, required: true, desc: "時間帯 (例: \"09:00-12:00\" \"14:00-17:00\")"
+      def log
+        client = CLI.require_auth_from(self)
+        date = options[:date] || Date.today.iso8601
+
+        options[:slots].each do |s|
+          unless s =~ /\A\d{1,2}:\d{2}-\d{1,2}:\d{2}\z/
+            CLI.error_output_from(self, "時間帯の形式が不正です（例: \"09:00-12:00\"）: #{s}")
+            exit 2
+          end
+        end
+
+        begin
+          result = client.create_study_time(date: date, slot_type: "actual", slots: options[:slots])
+          if options[:json]
+            say result.to_json
+          else
+            say "学習時間を記録しました (#{date})", :green
+            (result["actual_slots"] || []).each do |slot|
+              say "  #{slot['start_time']} - #{slot['end_time']}"
+            end
+          end
+        rescue Client::ApiError => e
+          CLI.error_output_from(self, e.body["error"] || "学習時間の保存に失敗しました")
+          exit (e.status == 422 ? 2 : 1)
+        end
+      end
+
+      desc "show", "学習時間を表示"
+      option :json, type: :boolean, default: false, desc: "JSON形式で出力"
+      option :date, type: :string, desc: "対象日 (YYYY-MM-DD, デフォルト: 今日)"
+      def show
+        client = CLI.require_auth_from(self)
+        date = options[:date] || Date.today.iso8601
+
+        begin
+          result = client.show_study_time(date: date)
+          if options[:json]
+            say result.to_json
+          else
+            say "学習時間 (#{date})", :bold
+            say "  予定:"
+            (result["planned_slots"] || []).each { |s| say "    #{s['start_time']} - #{s['end_time']}" }
+            say "  実績:"
+            (result["actual_slots"] || []).each { |s| say "    #{s['start_time']} - #{s['end_time']}" }
+          end
+        rescue Client::ApiError => e
+          CLI.error_output_from(self, e.body["error"] || "学習時間の取得に失敗しました")
+          exit (e.status == 404 ? 2 : 1)
+        end
+      end
+    }
+
+    desc "daily SUBCOMMAND", "日次目標の管理"
+    subcommand "daily", Class.new(Thor) { @_thor_name = "pdca daily"
+
+      desc "show", "指定日の日次目標を表示"
+      option :json, type: :boolean, default: false, desc: "JSON形式で出力"
+      option :date, type: :string, desc: "対象日 (YYYY-MM-DD, デフォルト: 今日)"
+      def show
+        client = CLI.require_auth_from(self)
+        date = options[:date] || Date.today.iso8601
+
+        begin
+          result = client.show_daily_goals(date: date)
+          daily_goals = result["daily_goals"] || []
+          if options[:json]
+            say result.to_json
+          elsif daily_goals.empty?
+            say "日次目標が見つかりません (#{date})", :yellow
+          else
+            dg = daily_goals.first
+            say "日次目標 (#{dg['goal_date']})", :bold
+            (dg["items"] || []).each do |item|
+              say "  ##{item['id']} [#{item['progress']}%] #{item['content']}"
+            end
+          end
+        rescue Client::ApiError => e
+          CLI.error_output_from(self, e.body["error"] || "日次目標の取得に失敗しました")
+          exit 1
+        end
+      end
+
+      desc "list", "週単位で日次目標一覧を表示"
+      option :json, type: :boolean, default: false, desc: "JSON形式で出力"
+      option :week, type: :string, required: true, desc: "週頭日 (YYYY-MM-DD)"
+      def list
+        client = CLI.require_auth_from(self)
+        begin
+          result = client.show_daily_goals(week: options[:week])
+          daily_goals = result["daily_goals"] || []
+          if options[:json]
+            say result.to_json
+          elsif daily_goals.empty?
+            say "日次目標が見つかりません", :yellow
+          else
+            daily_goals.each do |dg|
+              say "#{dg['goal_date']}", :bold
+              (dg["items"] || []).each do |item|
+                say "  ##{item['id']} [#{item['progress']}%] #{item['content']}"
+              end
+            end
+          end
+        rescue Client::ApiError => e
+          CLI.error_output_from(self, e.body["error"] || "日次目標一覧の取得に失敗しました")
+          exit 1
+        end
+      end
+
+      desc "update", "日次目標アイテムの Plan 内容を更新"
+      option :json, type: :boolean, default: false, desc: "JSON形式で出力"
+      option :date, type: :string, required: true, desc: "対象日 (YYYY-MM-DD)"
+      option :plans, type: :array, required: true, desc: "更新内容 (例: \"101=Ruby基礎\" \"102=hash演習\")"
+      def update
+        client = CLI.require_auth_from(self)
+
+        begin
+          lookup = client.show_daily_goals(date: options[:date])
+          daily_goals = lookup["daily_goals"] || []
+          if daily_goals.empty?
+            CLI.error_output_from(self, "#{options[:date]} の日次目標が見つかりません")
+            exit 2
+          end
+          daily_goal_id = daily_goals.first["id"]
+        rescue Client::ApiError => e
+          CLI.error_output_from(self, e.body["error"] || "日次目標の取得に失敗しました")
+          exit 1
+        end
+
+        updates = []
+        options[:plans].each do |pair|
+          unless pair.include?("=")
+            CLI.error_output_from(self, "--plans の形式が不正です（例: \"101=内容\"）: #{pair}")
+            exit 2
+          end
+          item_id, content = pair.split("=", 2)
+          if !item_id.match?(/\A[1-9]\d*\z/) || content.to_s.empty?
+            CLI.error_output_from(self, "--plans の形式が不正です（例: \"101=内容\"）: #{pair}")
+            exit 2
+          end
+          updates << { item_id: item_id.to_i, content: content }
+        end
+
+        results = []
+        updates.each do |u|
+          begin
+            r = client.update_daily_goal_item(daily_goal_id: daily_goal_id, item_id: u[:item_id], content: u[:content])
+            results << r["item"]
+          rescue Client::ApiError => e
+            CLI.error_output_from(self, e.body["error"] || "アイテム #{u[:item_id]} の更新に失敗しました")
+            exit 1
+          end
+        end
+
+        if options[:json]
+          say({ items: results }.to_json)
+        else
+          say "日次目標を更新しました (#{options[:date]})", :green
+          results.each { |item| say "  ##{item['id']} #{item['content']}" }
         end
       end
     }

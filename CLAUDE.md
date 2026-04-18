@@ -103,6 +103,48 @@ bin/pdca comment create --report_id 1 --content "コメント内容" --json
 bin/pdca comment delete --id 1 --json
 ```
 
+### 学習時間（S5）
+```bash
+# 実績の記録
+bin/pdca study log --date 2026-04-17 --slots "09:00-12:00" "14:00-17:00" --json
+
+# 学習時間を表示（予定・実績両方）
+bin/pdca study show --date 2026-04-17 --json
+```
+
+### 週次目標進捗%（E8）
+```bash
+# 単体更新（現在の週の目標が自動選択される）
+bin/pdca goal progress --item_id 5 --progress 50 --json
+
+# 一括更新
+bin/pdca goal progress --progresses "5:50" "6:80" --json
+```
+
+### 日次目標（S3 + E6）
+```bash
+# 指定日の日次目標を表示
+bin/pdca daily show --date 2026-04-17 --json
+
+# 週単位で一覧
+bin/pdca daily list --week 2026-04-13 --json
+
+# アイテムの Plan 内容を更新（id=内容 形式、最初の = で分割）
+bin/pdca daily update --date 2026-04-17 --plans "101=Ruby配列" "102=hash演習" --json
+```
+
+### コード提出（E9）
+```bash
+# 作成時にコード添付
+bin/pdca report create --status green --plan "..." --curriculum "Ruby基礎" --code "def hello; end" --json
+
+# ファイルから読み込み
+bin/pdca report create --plan "..." --curriculum "Ruby基礎" --code_file ./solution.rb --json
+
+# 更新時も同様
+bin/pdca report update --date 2026-04-17 --code "新しいコード" --json
+```
+
 ## learning_status の値
 - `green`: 順調、問題なし
 - `yellow`: 少し詰まっているが対処できそう
@@ -116,6 +158,10 @@ bin/pdca comment delete --id 1 --json
 - `--category_ids` は `plan show --json` で取得できるカテゴリIDを指定
 - `--force` による目標上書きは既存目標を削除するため、必ずユーザーに確認を取る
 - `--team` はチーム名の完全一致でフィルタ（部分一致不可）。チーム名は `student list --json` で確認可能
+- `--code` と `--code_file` は排他。両方指定するとエラー
+- `daily update --plans` は `id=内容` 形式。最初の `=` で分割するため、内容に `=` や `:` を含められる
+- `study log` は実績(actual)のみ対応。予定(planned)はWeb側から入力
+- `goal progress` は `--item_id + --progress`（単体）か `--progresses "id:%"`（一括）のどちらか一方を指定
 
 ## 終了コード
 - 0: 成功
