@@ -2,3 +2,5 @@
 Gemfile.lock
 .bundle/
 vendor/
+docs/reports/
+.DS_Store
