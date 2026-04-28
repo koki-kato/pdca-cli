@@ -17,9 +17,12 @@ description: pdca-cli で日次PDCA報告を作成・更新する。未設定な
 以下を上から順に実行する。分岐は状況に応じて選ぶ。
 
 ### 1. 認証チェック
-MCP ツール `mcp__pdca-mcp__whoami` を呼ぶ。
-- 成功（user情報あり）→次へ
-- エラー → MCP のログインを試みる（`mcp__pdca-mcp__login`）。それでもダメなら CLI の `bin/pdca login` を案内して停止
+MCP ツール `mcp__pdca-mcp__whoami` を呼ぶ。エラーは status コードで分岐する:
+
+- **成功**（user情報あり）→ 次へ
+- **401 / UNAUTHORIZED** → MCP のログインを試みる（`mcp__pdca-mcp__login`）。それでもダメなら CLI の `bin/pdca login` を案内して停止
+- **5xx / NETWORK_ERROR**（サーバー側障害）→ **停止しない**。ローカル設定（`~/.pdca-mcp.json` または `~/.pdca.yml`）からキャッシュ済みの user 情報を取得し、Step 1.5 のキュー復旧と Step 8 のキュー書き込みフォールバックに進む。設定ファイルが存在しない場合のみ停止
+- **その他**（4xx 等）→ 内容をユーザーに伝えて停止
 
 ### 1.5. キュー復旧チェック（サーバー停止フォールバック）
 
