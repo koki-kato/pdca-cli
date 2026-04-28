@@ -17,9 +17,40 @@ description: pdca-cli で日次PDCA報告を作成・更新する。未設定な
 以下を上から順に実行する。分岐は状況に応じて選ぶ。
 
 ### 1. 認証チェック
-MCP ツール `mcp__pdca-mcp__whoami` を呼ぶ。
-- 成功（user情報あり）→次へ
-- エラー → MCP のログインを試みる（`mcp__pdca-mcp__login`）。それでもダメなら CLI の `bin/pdca login` を案内して停止
+MCP ツール `mcp__pdca-mcp__whoami` を呼ぶ。エラーは status コードで分岐する:
+
+- **成功**（user情報あり）→ 次へ
+- **401 / UNAUTHORIZED** → MCP のログインを試みる（`mcp__pdca-mcp__login`）。それでもダメなら CLI の `bin/pdca login` を案内して停止
+- **5xx / NETWORK_ERROR**（サーバー側障害）→ **停止しない**。ローカル設定（`~/.pdca-mcp.json` または `~/.pdca.yml`）からキャッシュ済みの user 情報を取得し、Step 1.5 のキュー復旧と Step 8 のキュー書き込みフォールバックに進む。設定ファイルが存在しない場合のみ停止
+- **その他**（4xx 等）→ 内容をユーザーに伝えて停止
+
+### 1.5. キュー復旧チェック（サーバー停止フォールバック）
+
+`~/.pdca/queue/` に **過去の障害時に保存されたローカルキュー**があれば、サーバー復旧した今のうちに自動で本番投稿する。
+
+**手順**:
+
+1. キュー検出
+   ```bash
+   ls ~/.pdca/queue/*.json 2>/dev/null
+   ```
+   ディレクトリ・ファイル不在は no-op で次へ。
+
+2. 各 JSON ファイルを Read して内容を取得し、以下を判定:
+   - `mcp__pdca-mcp__report_show(date: <report_date>)` で本番側の存在確認
+   - **本番不在** → `payload` を使って `mcp__pdca-mcp__report_create` を実行
+     - 成功 → ファイル削除（`rm <path>`）
+     - 失敗（5xx/network 継続）→ ファイルは残し、ユーザーに「サーバーまだ不安定です」と通知
+   - **本番あり（同日報告済）** → `mkdir -p ~/.pdca/queue/conflicts/` し当該ファイルを移動
+     - 「ローカルキュー(<date>)と本番側に既存報告があります。conflicts/ に退避しました。手動マージしてください」と通知
+
+3. 同期件数を一行サマリで報告:
+   > 復旧キューを 3 件同期しました（うち 1 件は競合のため conflicts/ に退避）
+
+**前提**:
+- キューファイル名形式: `{user_id}__report_create__{YYYY-MM-DD}.json` または `{user_id}__report_update__{YYYY-MM-DD}.json`
+- 認証エラーが連発したら即座に処理を打ち切り、ユーザーに知らせる
+- バリデーションエラー (4xx) のキューは flush せず conflicts/ に移動して通知（payload に問題があるため自動修復不可）
 
 ### 2. 今日の報告・週次目標・学習計画・学習時間の状況を把握
 並列で取得する（MCP ツール優先）:
@@ -263,6 +294,60 @@ bin/pdca report update --date <YYYY-MM-DD> \
 
 成功したら JSON を軽くパースしてユーザーに結果を伝える（例: 「報告を送信しました。report_id: 123」）。エラーなら原因を伝えて再試行を提案。
 
+#### サーバー停止時のフォールバック（ローカルキュー保存）
+
+`report_create` / `report_update` が以下のエラーを返した場合、**諦めずにローカルキューに保存**する:
+
+- HTTP 5xx (`SERVER_ERROR`)
+- ネットワーク到達不能 (`NETWORK_ERROR`)
+- タイムアウト
+
+**手順**:
+
+1. ディレクトリ作成:
+   ```bash
+   mkdir -p ~/.pdca-mcp/queue
+   ```
+
+2. ファイル `~/.pdca/queue/{user_id}__{operation}__{report_date}.json` に以下を保存:
+
+   ```json
+   {
+     "operation": "report_create",
+     "report_date": "YYYY-MM-DD",
+     "payload": {
+       "learning_plan": "...",
+       "learning_do": "...",
+       "learning_check": "...",
+       "learning_action": "...",
+       "learning_status": "green",
+       "curriculum_name": "...",
+       "code_content": "..."
+     },
+     "queued_at": "ISO8601",
+     "user_id": <id>,
+     "user_email": "...",
+     "attempts": 0,
+     "last_error_code": "SERVER_ERROR",
+     "last_error_at": "ISO8601"
+   }
+   ```
+
+3. `study_log` / `goal_update` も同様に失敗したら `queue/` 内に同形式で別ファイル保存（operation を `study_log` / `goal_update` に変える）
+
+4. ユーザーに通知:
+   ```
+   ⚠️ サーバーが応答しないため、ローカルに保存しました（~/.pdca/queue/）。
+      復旧後、次回 /pdca-report 実行時に自動送信されます（Step 1.5 で処理）。
+   ```
+
+5. **Step 9（docs/reports/ 保存）は queue 状態でも必ず実行**（人間用バックアップとして残すため）
+
+**重要**:
+- `bin/pdca` CLI フォールバックも失敗した場合のみ queue 書き込みを行う（CLI が成功すれば queue 不要）
+- queue にあるファイルは Step 1.5 で次回起動時に自動 flush 試行される
+- バリデーションエラー (4xx) は queue しない（仕様起因のため再試行不可、ユーザーに修正を促す）
+
 #### 週次目標の進捗率を自動更新
 
 PDCA 報告の送信と同時に、Do の内容から進捗%を読み取り、週次目標の進捗率を自動更新する。
@@ -351,6 +436,32 @@ bin/pdca report create --date <YYYY-MM-DD 明日> --plan <plan内容> --status g
 ※ フラグ名は `bin/pdca report help create` で最新の仕様を確認してから使う（現状 `--date`）。
 
 スキップされた場合は何もせず終了。
+
+### 11. キュー状況確認（オプション）
+
+ユーザーが「キュー」「pending」「未送信」などと聞いたら以下を実行:
+
+```bash
+ls ~/.pdca/queue/*.json 2>/dev/null
+```
+
+各ファイルを Read して以下を一覧表示:
+- 報告日付（`report_date`）
+- 保存日時（`queued_at`）
+- 試行回数（`attempts`）
+- payload の `learning_plan` 冒頭一行
+
+競合ファイル（手動対応待ち）は別枠で表示:
+
+```bash
+ls ~/.pdca/queue/conflicts/*.json 2>/dev/null
+```
+
+**緊急破棄が必要な場合**:
+```bash
+rm ~/.pdca/queue/<file>.json
+```
+ただし破棄前に必ず `docs/reports/{date}.md` の存在確認を行い、人間用バックアップが残っていることを確認する。
 
 ## 注意事項
 
