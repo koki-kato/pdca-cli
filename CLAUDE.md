@@ -163,6 +163,16 @@ bin/pdca report update --date 2026-04-17 --code "新しいコード" --json
 - `study log` は実績(actual)のみ対応。予定(planned)はWeb側から入力
 - `goal progress` は `--item_id + --progress`（単体）か `--progresses "id:%"`（一括）のどちらか一方を指定
 
+## サーバー停止時のフォールバック
+
+サーバー (Heroku) が 5xx を返したり接続不能な状態でも、`/pdca-report` スキル経由ならローカルに一時保存される:
+
+- 保存先: `~/.pdca-mcp/queue/`
+- 形式: `{user_id}__report_create__{YYYY-MM-DD}.json`
+- 復旧後、次回 `/pdca-report` 実行時に自動同期（本番に同日報告がなければ投稿）
+- 競合（本番側に既に同日報告あり）は `~/.pdca-mcp/queue/conflicts/` に退避
+- 人間用バックアップは `docs/reports/{date}.md` に常時保存（queue とは独立）
+
 ## 終了コード
 - 0: 成功
 - 1: 認証エラー / ネットワークエラー
