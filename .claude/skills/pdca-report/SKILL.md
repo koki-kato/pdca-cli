@@ -23,13 +23,13 @@ MCP ツール `mcp__pdca-mcp__whoami` を呼ぶ。
 
 ### 1.5. キュー復旧チェック（サーバー停止フォールバック）
 
-`~/.pdca-mcp/queue/` に **過去の障害時に保存されたローカルキュー**があれば、サーバー復旧した今のうちに自動で本番投稿する。
+`~/.pdca/queue/` に **過去の障害時に保存されたローカルキュー**があれば、サーバー復旧した今のうちに自動で本番投稿する。
 
 **手順**:
 
 1. キュー検出
    ```bash
-   ls ~/.pdca-mcp/queue/*.json 2>/dev/null
+   ls ~/.pdca/queue/*.json 2>/dev/null
    ```
    ディレクトリ・ファイル不在は no-op で次へ。
 
@@ -38,7 +38,7 @@ MCP ツール `mcp__pdca-mcp__whoami` を呼ぶ。
    - **本番不在** → `payload` を使って `mcp__pdca-mcp__report_create` を実行
      - 成功 → ファイル削除（`rm <path>`）
      - 失敗（5xx/network 継続）→ ファイルは残し、ユーザーに「サーバーまだ不安定です」と通知
-   - **本番あり（同日報告済）** → `mkdir -p ~/.pdca-mcp/queue/conflicts/` し当該ファイルを移動
+   - **本番あり（同日報告済）** → `mkdir -p ~/.pdca/queue/conflicts/` し当該ファイルを移動
      - 「ローカルキュー(<date>)と本番側に既存報告があります。conflicts/ に退避しました。手動マージしてください」と通知
 
 3. 同期件数を一行サマリで報告:
@@ -306,7 +306,7 @@ bin/pdca report update --date <YYYY-MM-DD> \
    mkdir -p ~/.pdca-mcp/queue
    ```
 
-2. ファイル `~/.pdca-mcp/queue/{user_id}__{operation}__{report_date}.json` に以下を保存:
+2. ファイル `~/.pdca/queue/{user_id}__{operation}__{report_date}.json` に以下を保存:
 
    ```json
    {
@@ -334,7 +334,7 @@ bin/pdca report update --date <YYYY-MM-DD> \
 
 4. ユーザーに通知:
    ```
-   ⚠️ サーバーが応答しないため、ローカルに保存しました（~/.pdca-mcp/queue/）。
+   ⚠️ サーバーが応答しないため、ローカルに保存しました（~/.pdca/queue/）。
       復旧後、次回 /pdca-report 実行時に自動送信されます（Step 1.5 で処理）。
    ```
 
@@ -439,7 +439,7 @@ bin/pdca report create --date <YYYY-MM-DD 明日> --plan <plan内容> --status g
 ユーザーが「キュー」「pending」「未送信」などと聞いたら以下を実行:
 
 ```bash
-ls ~/.pdca-mcp/queue/*.json 2>/dev/null
+ls ~/.pdca/queue/*.json 2>/dev/null
 ```
 
 各ファイルを Read して以下を一覧表示:
@@ -451,12 +451,12 @@ ls ~/.pdca-mcp/queue/*.json 2>/dev/null
 競合ファイル（手動対応待ち）は別枠で表示:
 
 ```bash
-ls ~/.pdca-mcp/queue/conflicts/*.json 2>/dev/null
+ls ~/.pdca/queue/conflicts/*.json 2>/dev/null
 ```
 
 **緊急破棄が必要な場合**:
 ```bash
-rm ~/.pdca-mcp/queue/<file>.json
+rm ~/.pdca/queue/<file>.json
 ```
 ただし破棄前に必ず `docs/reports/{date}.md` の存在確認を行い、人間用バックアップが残っていることを確認する。
 

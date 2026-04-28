@@ -167,10 +167,10 @@ bin/pdca report update --date 2026-04-17 --code "新しいコード" --json
 
 サーバー (Heroku) が 5xx を返したり接続不能な状態でも、`/pdca-report` スキル経由ならローカルに一時保存される:
 
-- 保存先: `~/.pdca-mcp/queue/`
+- 保存先: `~/.pdca/queue/`
 - 形式: `{user_id}__report_create__{YYYY-MM-DD}.json`
 - 復旧後、次回 `/pdca-report` 実行時に自動同期（本番に同日報告がなければ投稿）
-- 競合（本番側に既に同日報告あり）は `~/.pdca-mcp/queue/conflicts/` に退避
+- 競合（本番側に既に同日報告あり）は `~/.pdca/queue/conflicts/` に退避
 - 人間用バックアップは `docs/reports/{date}.md` に常時保存（queue とは独立）
 
 ## 終了コード
